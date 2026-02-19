@@ -1,5 +1,4 @@
 import os
-from collections.abc import Iterator
 
 
 def read_fasta(path):
@@ -33,35 +32,20 @@ def infer_labels(root_folder, dirpath, filename):
     return domain, kingdom, genus, species
 
 
-def _iter_fasta_files(root_folder: str) -> Iterator[tuple[str, str]]:
-    for dirpath, _, filenames in os.walk(root_folder):
-        for file in filenames:
-            if file.lower().endswith(".fasta"):
-                yield dirpath, file
-
-
-def load_dataset(root_folder, show_progress=False, kingdom_filter=None):
+def load_dataset(root_folder, show_progress=False):
     data = []
 
     root_folder = os.path.abspath(root_folder)
-    scan_root = root_folder
-    if kingdom_filter:
-        kingdom_root = os.path.join(root_folder, str(kingdom_filter))
-        if os.path.isdir(kingdom_root):
-            scan_root = kingdom_root
+    fasta_files = []
+    for dirpath, _, filenames in os.walk(root_folder):
+        for file in filenames:
+            if file.endswith(".fasta"):
+                fasta_files.append((dirpath, file))
 
-    total_files = 0
-    fasta_files = None
-    if show_progress:
-        fasta_files = list(_iter_fasta_files(scan_root))
-        total_files = len(fasta_files)
-        iterator = enumerate(fasta_files, start=1)
-    else:
-        iterator = enumerate(_iter_fasta_files(scan_root), start=1)
-
+    total_files = len(fasta_files)
     total_records = 0
 
-    for idx, (dirpath, file) in iterator:
+    for idx, (dirpath, file) in enumerate(fasta_files, start=1):
         full_path = os.path.join(dirpath, file)
 
         domain, kingdom, genus, species = infer_labels(root_folder, dirpath, file)

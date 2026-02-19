@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Generated datasets and training artifacts
+runs/
+DNA/
+RNA/
