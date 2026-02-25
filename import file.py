@@ -28,7 +28,14 @@ Entrez.api_key = NCBI_API_KEY
 Entrez.max_tries = int(os.getenv("ENTREZ_MAX_TRIES", "3"))
 Entrez.sleep_between_tries = int(os.getenv("ENTREZ_SLEEP_BETWEEN_TRIES", "2"))
 
-SAMPLES_PER_SPECIES = 8
+SAMPLES_PER_SPECIES = max(1, int(os.getenv("SAMPLES_PER_SPECIES", "8")))
+DNA_SAMPLES_PER_SPECIES = max(
+    1, int(os.getenv("DNA_SAMPLES_PER_SPECIES", os.getenv("SAMPLES_PER_SPECIES_DNA", str(SAMPLES_PER_SPECIES))))
+)
+RNA_SAMPLES_PER_SPECIES = max(
+    1, int(os.getenv("RNA_SAMPLES_PER_SPECIES", os.getenv("SAMPLES_PER_SPECIES_RNA", "20")))
+)
+RNA_REQUIRE_COMPLETE_GENOME = os.getenv("RNA_REQUIRE_COMPLETE_GENOME", "1") == "1"
 SEARCH_RETMAX = 800
 FASTA_PARSE_FORMAT = os.getenv("FASTA_PARSE_FORMAT", "fasta-blast")
 SKIP_COMPLETED = os.getenv("SKIP_COMPLETED", "1") == "1"
@@ -109,13 +116,32 @@ PROFILE_RNA = {
     "require_species_phrase": False,
     "min_len": 500,
     "max_len": 40000,
-    "title_term": '(("complete genome"[Title]) OR (segment[Title]) OR (RNA[Title]))',
-    "relaxed_term": '(("complete genome"[All Fields]) OR (segment[All Fields]) OR (RNA[All Fields]))',
-    "exclude_block": '(patent[Title] OR vector[Title] OR "synthetic construct"[Organism])',
+    "title_term": (
+        '("complete genome"[Title])'
+        if RNA_REQUIRE_COMPLETE_GENOME
+        else '(("complete genome"[Title]) OR (segment[Title]) OR (RNA[Title]))'
+    ),
+    "relaxed_term": (
+        '("complete genome"[All Fields])'
+        if RNA_REQUIRE_COMPLETE_GENOME
+        else '(("complete genome"[All Fields]) OR (segment[All Fields]) OR (RNA[All Fields]))'
+    ),
+    "exclude_block": (
+        '(patent[Title] OR vector[Title] OR "synthetic construct"[Organism] OR "partial sequence"[Title] '
+        'OR "partial cds"[Title] OR "complete cds"[Title])'
+    ),
     "include_terms": [],
-    "bad_terms": ["vector", "plasmid", "synthetic construct"],
+    "bad_terms": [
+        "vector",
+        "plasmid",
+        "synthetic construct",
+        "partial sequence",
+        "partial cds",
+        "complete cds",
+    ],
     "use_aliases": True,
     "organism_fallback_all_fields": True,
+    "require_complete_genome": RNA_REQUIRE_COMPLETE_GENOME,
 }
 
 SEARCH_PROFILES = {
@@ -217,7 +243,6 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
         "Influenza B virus",
         "Influenza C virus",
         "Influenza D virus",
-        "Influenza A virus H1N1",
     ],
     "Betacoronavirus": [
         "SARS-CoV-2",
@@ -265,8 +290,6 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
         "Human rhinovirus A",
         "Human rhinovirus B",
         "Human rhinovirus C",
-        "Human rhinovirus A16",
-        "Human rhinovirus C15",
     ],
     "Arenavirus": ["Lassa virus", "Junin virus", "Machupo virus", "Guanarito virus", "Sabia virus"],
     "Hantavirus": ["Hantaan virus", "Sin Nombre virus", "Andes virus", "Puumala virus", "Seoul virus"],
@@ -402,6 +425,13 @@ def normalize_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def target_samples_for_profile(profile_name: str) -> int:
+    name = profile_name.strip().lower()
+    if name == "rna":
+        return int(RNA_SAMPLES_PER_SPECIES)
+    return int(DNA_SAMPLES_PER_SPECIES)
+
+
 def expand_organism_names(base_name: str, use_aliases: bool) -> List[str]:
     names = [base_name]
     if use_aliases:
@@ -470,6 +500,12 @@ def is_non_target(header: str, profile: Dict[str, object]) -> bool:
     if any(t in h for t in bad_terms):
         return True
 
+    if bool(profile.get("require_complete_genome", False)):
+        has_complete_genome = "complete genome" in h
+        has_complete_segment = "segment" in h and "complete sequence" in h
+        if not (has_complete_genome or has_complete_segment):
+            return True
+
     include_terms = [str(t).lower() for t in profile.get("include_terms", [])]
     if include_terms and not any(t in h for t in include_terms):
         return True
@@ -477,7 +513,7 @@ def is_non_target(header: str, profile: Dict[str, object]) -> bool:
     return False
 
 
-def search_ids(genus: str, species: str, profile: Dict[str, object]) -> List[str]:
+def search_ids(genus: str, species: str, profile: Dict[str, object], target_count: int) -> List[str]:
     queries = build_species_queries(genus, species, profile)
     seen = set()
     collected: List[str] = []
@@ -525,7 +561,7 @@ def search_ids(genus: str, species: str, profile: Dict[str, object]) -> List[str
             seen.add(rid)
             collected.append(rid)
 
-        if len(collected) >= max(SAMPLES_PER_SPECIES * 10, 80):
+        if len(collected) >= max(target_count * 12, 120):
             break
 
     if network_failed and not collected:
@@ -854,6 +890,7 @@ def run_audit_collection(collection: Dict[str, object], tsv_rows: List[Dict[str,
     root = Path(collection["root"])
     profile_name = str(collection["profile"])
     profile = SEARCH_PROFILES[profile_name]
+    target_count = target_samples_for_profile(profile_name)
     genus_to_species = collection["genus_to_species"]
 
     root.mkdir(parents=True, exist_ok=True)
@@ -864,15 +901,15 @@ def run_audit_collection(collection: Dict[str, object], tsv_rows: List[Dict[str,
 
         for species in species_list:
             local_count = count_existing_samples(root, genus, species)
-            missing = max(0, SAMPLES_PER_SPECIES - local_count)
+            missing = max(0, target_count - local_count)
             status = "FULL" if missing == 0 else "MISSING"
             ncbi_ids = ""
 
             if AUDIT_CHECK_NCBI and missing > 0:
-                ids = search_ids(genus, species, profile)
+                ids = search_ids(genus, species, profile, target_count=target_count)
                 ncbi_ids = str(len(ids))
 
-            line = f"- {species}: local={local_count}/{SAMPLES_PER_SPECIES} missing={missing}"
+            line = f"- {species}: local={local_count}/{target_count} missing={missing}"
             if ncbi_ids:
                 line += f" ncbi_ids={ncbi_ids}"
             line += f" [{status}]"
@@ -884,7 +921,7 @@ def run_audit_collection(collection: Dict[str, object], tsv_rows: List[Dict[str,
                     "genus": genus,
                     "species": species,
                     "local_count": local_count,
-                    "target_count": SAMPLES_PER_SPECIES,
+                    "target_count": target_count,
                     "missing_count": missing,
                     "status": status,
                     "ncbi_ids": ncbi_ids,
@@ -932,6 +969,7 @@ def run_collection(collection: Dict[str, object]) -> str:
     root = Path(collection["root"])
     profile_name = str(collection["profile"])
     profile = SEARCH_PROFILES[profile_name]
+    target_count = target_samples_for_profile(profile_name)
     genus_to_species = collection["genus_to_species"]
 
     root.mkdir(parents=True, exist_ok=True)
@@ -945,19 +983,19 @@ def run_collection(collection: Dict[str, object]) -> str:
             existing = existing_species_state(root, genus, species)
             existing_count = int(existing["count"])
 
-            if SKIP_COMPLETED and not FORCE_REBUILD and existing_count >= SAMPLES_PER_SPECIES:
+            if SKIP_COMPLETED and not FORCE_REBUILD and existing_count >= target_count:
                 report_lines.append(
-                    f"- {species}: {SAMPLES_PER_SPECIES}/{SAMPLES_PER_SPECIES} [SKIPPED EXISTING]"
+                    f"- {species}: {target_count}/{target_count} [SKIPPED EXISTING]"
                 )
                 print(f"[{label}] SKIP {genus}/{species}: already has {existing_count} samples")
                 continue
 
             append_mode = REFILL_ONLY_MISSING and not FORCE_REBUILD
-            needed = max(0, SAMPLES_PER_SPECIES - existing_count) if append_mode else SAMPLES_PER_SPECIES
+            needed = max(0, target_count - existing_count) if append_mode else target_count
 
             if needed == 0:
                 report_lines.append(
-                    f"- {species}: {SAMPLES_PER_SPECIES}/{SAMPLES_PER_SPECIES} [NO REFILL NEEDED]"
+                    f"- {species}: {target_count}/{target_count} [NO REFILL NEEDED]"
                 )
                 continue
 
@@ -965,13 +1003,13 @@ def run_collection(collection: Dict[str, object]) -> str:
                 f"\n[{label}] Searching: {display_name} "
                 f"(existing={existing_count}, need={needed}, append={append_mode})"
             )
-            ids = search_ids(genus, species, profile)
+            ids = search_ids(genus, species, profile, target_count=target_count)
             print(f"[{label}] IDs found: {len(ids)}")
 
             if not ids:
                 final_count = existing_count if append_mode else 0
-                warn = " [NOT ENOUGH UNIQUE STRAINS]" if final_count < SAMPLES_PER_SPECIES else ""
-                report_lines.append(f"- {species}: {final_count}/{SAMPLES_PER_SPECIES} (no records){warn}")
+                warn = " [NOT ENOUGH UNIQUE STRAINS]" if final_count < target_count else ""
+                report_lines.append(f"- {species}: {final_count}/{target_count} (no records){warn}")
                 continue
 
             records = fetch_fasta_records(ids)
@@ -1001,11 +1039,11 @@ def run_collection(collection: Dict[str, object]) -> str:
                 notes.append(f"+{len(selected)} new")
             if len(selected) == 0 and len(ids) > 0:
                 notes.append("QUERY_HIT_BUT_FILTERED_OR_DUPLICATE")
-            if final_count < SAMPLES_PER_SPECIES:
+            if final_count < target_count:
                 notes.append("NOT ENOUGH UNIQUE STRAINS")
 
             suffix = f" [{' | '.join(notes)}]" if notes else ""
-            status = f"{final_count}/{SAMPLES_PER_SPECIES}"
+            status = f"{final_count}/{target_count}"
             report_lines.append(f"- {species}: {status}{suffix}")
             print(f"[{label}] SAVE {genus}/{species}: {status}{suffix}")
 
@@ -1031,6 +1069,9 @@ def main() -> None:
         + f" force_rebuild={FORCE_REBUILD}"
         + f" refill_only_missing={REFILL_ONLY_MISSING}"
         + f" audit_only={AUDIT_ONLY}"
+        + f" dna_samples_per_species={DNA_SAMPLES_PER_SPECIES}"
+        + f" rna_samples_per_species={RNA_SAMPLES_PER_SPECIES}"
+        + f" rna_require_complete_genome={int(RNA_REQUIRE_COMPLETE_GENOME)}"
     )
     try:
         if AUDIT_ONLY:

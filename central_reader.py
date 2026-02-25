@@ -32,6 +32,14 @@ TARGET_ROOTS = {
     "rna": Path("RNA/Viruses"),
 }
 _TARGET_GENUS_VOCAB: dict[str, set[str]] | None = None
+_ROUTER_MODELS_CACHE: dict[
+    tuple[str, str], tuple[dict[str, "LoadedTargetModel"], dict[str, int]]
+] = {}
+_KINGDOM_ROUTER_CACHE: dict[str, object] = {
+    "path": "",
+    "mtime_ns": -1,
+    "model": None,
+}
 
 
 @dataclass(frozen=True)
@@ -150,7 +158,22 @@ def load_router_models(model_dir: Path = Path("runs/saved_models"), source: str 
     if source not in {"best", "latest"}:
         raise ValueError("source must be 'best' or 'latest'")
 
+    resolved_dir = str(model_dir.resolve())
+    cache_key = (resolved_dir, source)
+    cached = _ROUTER_MODELS_CACHE.get(cache_key)
+    if cached is not None:
+        cached_models, cached_mtimes = cached
+        is_fresh = True
+        for target, item in cached_models.items():
+            p = item.path
+            if not p.exists() or p.stat().st_mtime_ns != int(cached_mtimes.get(target, -1)):
+                is_fresh = False
+                break
+        if is_fresh:
+            return cached_models
+
     loaded: dict[str, LoadedTargetModel] = {}
+    mtimes: dict[str, int] = {}
     for target in TARGETS:
         chosen = None
         for name in _model_candidates(target, source):
@@ -166,8 +189,33 @@ def load_router_models(model_dir: Path = Path("runs/saved_models"), source: str 
             )
 
         loaded[target] = LoadedTargetModel(target=target, path=chosen, model=load(chosen))
+        mtimes[target] = int(chosen.stat().st_mtime_ns)
 
+    _ROUTER_MODELS_CACHE[cache_key] = (loaded, mtimes)
     return loaded
+
+
+def load_kingdom_router_model(path: Path = DEFAULT_KINGDOM_ROUTER_MODEL):
+    global _KINGDOM_ROUTER_CACHE
+
+    if not path.exists():
+        return None
+
+    resolved = str(path.resolve())
+    mtime = int(path.stat().st_mtime_ns)
+    if (
+        _KINGDOM_ROUTER_CACHE.get("path") == resolved
+        and int(_KINGDOM_ROUTER_CACHE.get("mtime_ns", -1)) == mtime
+    ):
+        return _KINGDOM_ROUTER_CACHE.get("model")
+
+    model = load(path)
+    _KINGDOM_ROUTER_CACHE = {
+        "path": resolved,
+        "mtime_ns": mtime,
+        "model": model,
+    }
+    return model
 
 
 def _split_sequence_to_windows(
@@ -571,9 +619,7 @@ def run_central_reader(
 
     models = load_router_models(source=model_source)
 
-    kingdom_router = None
-    if DEFAULT_KINGDOM_ROUTER_MODEL.exists():
-        kingdom_router = load(DEFAULT_KINGDOM_ROUTER_MODEL)
+    kingdom_router = load_kingdom_router_model()
 
     if force_target is not None:
         force_target = force_target.strip().lower()

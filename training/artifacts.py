@@ -127,16 +127,25 @@ def append_history_csv(path: Path, row: dict):
         "started_utc",
         "duration_seconds",
         "target",
+        "train_preset",
         "label_level",
         "split_mode",
+        "enable_cv",
         "dedup_exact",
         "test_size",
+        "train_fragment_len",
+        "max_seq_len",
+        "max_samples_total",
+        "max_samples_per_label",
+        "rna_min_unique_genomes_per_label",
+        "rna_min_samples_per_label",
         "kmer_min",
         "kmer_max",
         "kmer_min_df",
         "kmer_max_features",
         "lr_c",
         "lr_max_iter",
+        "lr_tol",
         "lr_solver",
         "lr_class_weight",
         "n_samples_total",
@@ -150,6 +159,10 @@ def append_history_csv(path: Path, row: dict):
         "n_groups_train",
         "n_groups_validation",
         "min_class_count_total",
+        "n_labels_dropped_min_unique_genomes",
+        "n_samples_dropped_min_unique_genomes",
+        "n_labels_dropped_min_samples_per_label",
+        "n_samples_dropped_min_samples_per_label",
         "train_accuracy",
         "train_balanced_accuracy",
         "train_precision_macro",
@@ -169,6 +182,9 @@ def append_history_csv(path: Path, row: dict):
         "val_f1_weighted",
         "val_mcc",
         "val_log_loss",
+        "family_val_accuracy",
+        "global_only_val_accuracy",
+        "hierarchy_delta_vs_global_acc",
         "cv_enabled",
         "cv_splits",
         "cv_accuracy_mean",
@@ -195,6 +211,9 @@ def append_history_csv(path: Path, row: dict):
 
 def build_report(summary: dict) -> str:
     val = summary["metrics"]["validation"]
+    fam_val = summary["metrics"].get("family_validation")
+    global_val = summary["metrics"].get("global_only_validation")
+    delta = summary["metrics"].get("hierarchy_delta_vs_global")
     cv = summary["cv"]
     art = summary["artifacts"]
 
@@ -204,8 +223,10 @@ def build_report(summary: dict) -> str:
         f"Started (UTC): {summary.get('started_utc', '')}",
         f"Duration (s): {summary.get('duration_seconds', 0.0):.2f}",
         f"Target: {summary['config']['target']}",
+        f"Preset: {summary['config'].get('train_preset', '')}",
         f"Label level: {summary['config']['label_level']}",
         f"Split mode: {summary['config']['split_mode']}",
+        f"CV enabled: {summary['config'].get('enable_cv', '')}",
         f"Dedup exact: {summary['config']['dedup_exact']}",
         f"Samples: {summary['data']['n_samples_total']}",
         f"Classes: {summary['data']['n_classes_total']}",
@@ -223,6 +244,32 @@ def build_report(summary: dict) -> str:
         f"Validation LogLoss: {val.get('log_loss', float('nan')):.6f}",
     ]
 
+    dropped_labels = int(summary.get("data", {}).get("n_labels_dropped_min_unique_genomes", 0))
+    dropped_samples = int(summary.get("data", {}).get("n_samples_dropped_min_unique_genomes", 0))
+    if dropped_labels > 0 or dropped_samples > 0:
+        lines.append(
+            "RNA min-unique-genomes filter: "
+            f"dropped_labels={dropped_labels}, dropped_samples={dropped_samples}"
+        )
+
+    dropped_labels_by_count = int(summary.get("data", {}).get("n_labels_dropped_min_samples_per_label", 0))
+    dropped_samples_by_count = int(summary.get("data", {}).get("n_samples_dropped_min_samples_per_label", 0))
+    if dropped_labels_by_count > 0 or dropped_samples_by_count > 0:
+        lines.append(
+            "RNA min-samples-per-label filter: "
+            f"dropped_labels={dropped_labels_by_count}, dropped_samples={dropped_samples_by_count}"
+        )
+
+    if isinstance(fam_val, dict):
+        lines.append(f"Family Routing Acc: {fam_val.get('accuracy', 0.0) * 100:.2f}%")
+        lines.append(f"Family Routing Balanced Acc: {fam_val.get('balanced_accuracy', 0.0) * 100:.2f}%")
+
+    if isinstance(global_val, dict):
+        lines.append(f"Global-only Val Acc: {global_val.get('accuracy', 0.0) * 100:.2f}%")
+
+    if isinstance(delta, dict):
+        lines.append(f"Hierarchy - Global Acc Delta: {delta.get('accuracy_delta', 0.0):+.4f}")
+
     if cv.get("enabled"):
         lines.append(
             f"CV ({cv['n_splits']} folds) Acc={cv['accuracy_mean']:.4f}±{cv['accuracy_std']:.4f}, "
@@ -233,6 +280,8 @@ def build_report(summary: dict) -> str:
 
     lines.append(f"Artifacts: {art['run_dir']}")
     lines.append(f"Accuracy timeline: {art['accuracy_timeline_csv']}")
+    if art.get("family_confusion_matrix_csv"):
+        lines.append(f"Family confusion matrix: {art['family_confusion_matrix_csv']}")
 
     if art.get("run_model"):
         lines.append(f"Run model: {art['run_model']}")

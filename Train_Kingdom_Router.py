@@ -55,7 +55,6 @@ def build_model(
             solver=lr_solver,
             C=c_value,
             class_weight=lr_class_weight,
-            n_jobs=None,
         ),
     )
 
