@@ -1,11 +1,12 @@
 """Training dashboard for experiment tracking.
 
 Run:
-  streamlit run /Users/isaacluu/Downloads/Geneclass25/Training_Dashboard.py
+  python3 -m streamlit run /Users/isaacluu/Downloads/Geneclass25/Training_Dashboard.py
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Iterable
 
@@ -111,13 +112,112 @@ def _safe_columns(df, columns: Iterable[str]) -> list[str]:
     return [col for col in columns if col in df.columns]
 
 
-def load_history_df(path: Path):
+def _coerce_run_id(run_dir: Path, summary: dict) -> str:
+    run_id = str(summary.get("run_id") or "").strip()
+    if run_id:
+        return run_id
+    name = run_dir.name
+    if name.startswith("run_"):
+        tail = name[len("run_") :]
+        if "_" in tail:
+            return tail.split("_", 1)[0]
+        return tail
+    return name
+
+
+def _load_history_from_summaries(logs_dir: Path):
     import pandas as pd
 
-    if not path.exists():
+    if not logs_dir.exists():
         return pd.DataFrame()
 
-    df = pd.read_csv(path)
+    rows = []
+    for summary_path in sorted(logs_dir.glob("run_*/summary.json")):
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        run_dir = summary_path.parent
+        cfg = summary.get("config", {}) or {}
+        model = cfg.get("model", {}) or {}
+        data = summary.get("data", {}) or {}
+        metrics = summary.get("metrics", {}) or {}
+        train = metrics.get("train", {}) or {}
+        val = metrics.get("validation", {}) or {}
+        cv = summary.get("cv", {}) or {}
+
+        rows.append(
+            {
+                "run_id": _coerce_run_id(run_dir, summary),
+                "timestamp_utc": summary.get("timestamp_utc"),
+                "started_utc": summary.get("started_utc"),
+                "duration_seconds": summary.get("duration_seconds"),
+                "target": cfg.get("target"),
+                "train_profile": cfg.get("train_profile"),
+                "train_preset": cfg.get("train_preset"),
+                "label_level": cfg.get("label_level"),
+                "split_mode": cfg.get("split_mode"),
+                "dedup_exact": cfg.get("dedup_exact"),
+                "test_size": cfg.get("test_size"),
+                "kmer_min": model.get("kmer_min"),
+                "kmer_max": model.get("kmer_max"),
+                "kmer_min_df": model.get("kmer_min_df"),
+                "kmer_max_features": model.get("kmer_max_features"),
+                "lr_c": model.get("lr_c"),
+                "lr_max_iter": model.get("lr_max_iter"),
+                "lr_solver": model.get("lr_solver"),
+                "lr_class_weight": model.get("lr_class_weight"),
+                "n_samples_total": data.get("n_samples_total"),
+                "n_classes_total": data.get("n_classes_total"),
+                "n_validation_classes_present": data.get("n_validation_classes_present"),
+                "n_validation_classes_missing": data.get("n_validation_classes_missing"),
+                "n_validation_genera": data.get("n_validation_genera"),
+                "n_train": data.get("n_train"),
+                "n_validation": data.get("n_validation"),
+                "n_groups_total": data.get("n_groups_total"),
+                "n_groups_train": data.get("n_groups_train"),
+                "n_groups_validation": data.get("n_groups_validation"),
+                "min_class_count_total": data.get("min_class_count_total"),
+                "train_accuracy": train.get("accuracy"),
+                "train_balanced_accuracy": train.get("balanced_accuracy"),
+                "train_precision_macro": train.get("precision_macro"),
+                "train_recall_macro": train.get("recall_macro"),
+                "train_f1_macro": train.get("f1_macro"),
+                "train_precision_weighted": train.get("precision_weighted"),
+                "train_recall_weighted": train.get("recall_weighted"),
+                "train_f1_weighted": train.get("f1_weighted"),
+                "train_mcc": train.get("mcc"),
+                "val_accuracy": val.get("accuracy"),
+                "val_balanced_accuracy": val.get("balanced_accuracy"),
+                "val_precision_macro": val.get("precision_macro"),
+                "val_recall_macro": val.get("recall_macro"),
+                "val_f1_macro": val.get("f1_macro"),
+                "val_precision_weighted": val.get("precision_weighted"),
+                "val_recall_weighted": val.get("recall_weighted"),
+                "val_f1_weighted": val.get("f1_weighted"),
+                "val_mcc": val.get("mcc"),
+                "val_log_loss": val.get("log_loss"),
+                "cv_enabled": cv.get("enabled"),
+                "cv_splits": cv.get("n_splits"),
+                "cv_accuracy_mean": cv.get("accuracy_mean"),
+                "cv_accuracy_std": cv.get("accuracy_std"),
+                "cv_balanced_accuracy_mean": cv.get("balanced_accuracy_mean"),
+                "cv_balanced_accuracy_std": cv.get("balanced_accuracy_std"),
+                "cv_f1_macro_mean": cv.get("f1_macro_mean"),
+                "cv_f1_macro_std": cv.get("f1_macro_std"),
+                "cv_f1_weighted_mean": cv.get("f1_weighted_mean"),
+                "cv_f1_weighted_std": cv.get("f1_weighted_std"),
+                "run_dir": str(run_dir.resolve()),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _postprocess_history_df(df):
+    import pandas as pd
+
     if df.empty:
         return df
 
@@ -135,8 +235,60 @@ def load_history_df(path: Path):
     if "run_id" not in df.columns and "run_dir" in df.columns:
         df["run_id"] = df["run_dir"].astype(str).apply(lambda x: Path(x).name.replace("run_", ""))
 
+    if "run_dir" in df.columns:
+        df = df[df["run_dir"].astype(str).str.len() > 0]
+
+    if "run_id" in df.columns:
+        df = df.dropna(subset=["run_id"])
+        df = df[df["run_id"].astype(str).str.len() > 0]
+        if "timestamp_utc" in df.columns:
+            df = df.sort_values(["timestamp_utc", "run_id"]).drop_duplicates(
+                subset=["run_id"], keep="last"
+            )
+        else:
+            df = df.drop_duplicates(subset=["run_id"], keep="last")
+        df = df.reset_index(drop=True)
+
     df["run_index"] = range(1, len(df) + 1)
     return df
+
+
+def load_history_df(path: Path):
+    import pandas as pd
+
+    summary_df = _postprocess_history_df(_load_history_from_summaries(path.parent))
+
+    if not path.exists():
+        return summary_df
+
+    df = pd.DataFrame()
+    try:
+        # Fast path when CSV schema is consistent.
+        df = pd.read_csv(path)
+    except Exception:
+        try:
+            # Tolerate malformed mixed-schema rows.
+            df = pd.read_csv(path, engine="python", on_bad_lines="skip")
+        except Exception:
+            df = pd.DataFrame()
+
+    # Mixed old/new history formats can still decode but become semantically invalid.
+    looks_valid = (
+        (not df.empty)
+        and ("run_id" in df.columns)
+        and ("timestamp_utc" in df.columns)
+        and ("target" in df.columns)
+    )
+    if not looks_valid:
+        return summary_df
+
+    csv_df = _postprocess_history_df(df)
+
+    # Prefer summary-derived history when mixed-schema CSV drops many rows.
+    if not summary_df.empty and len(summary_df) > len(csv_df):
+        return summary_df
+
+    return csv_df
 
 
 def render_dashboard() -> None:
