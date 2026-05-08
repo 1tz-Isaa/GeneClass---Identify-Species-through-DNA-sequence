@@ -13,7 +13,6 @@ import warnings
 from collections import Counter
 from datetime import datetime, timezone
 from time import perf_counter
-
 from sklearn.metrics import log_loss
 
 from training.artifacts import (
