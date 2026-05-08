@@ -172,7 +172,11 @@ def main() -> None:
             st.subheader("Routing scores")
             if routed["routing_scores"]:
                 routing_view = []
-                for row in routed["routing_scores"]:
+                for row in sorted(
+                    routed["routing_scores"],
+                    key=lambda x: float(x.get("score", 0.0) or 0.0),
+                    reverse=True,
+                ):
                     view = {
                         "target": row.get("target"),
                         "kingdom": row.get("kingdom"),
@@ -190,7 +194,12 @@ def main() -> None:
                 st.info("Routing scores skipped due to manual override.")
             if routed.get("fit_scores"):
                 fit_view = []
-                for target, item in routed["fit_scores"].items():
+                fit_items = sorted(
+                    routed["fit_scores"].items(),
+                    key=lambda kv: float(((kv[1] or {}).get("score", 0.0)) or 0.0),
+                    reverse=True,
+                )
+                for target, item in fit_items:
                     fit_view.append(
                         {
                             "target": target,
@@ -233,6 +242,11 @@ def main() -> None:
 
             ranked_groups = rank_disease_groups(row.get("top5") or [], top_n=3)
             if ranked_groups:
+                ranked_groups = sorted(
+                    ranked_groups,
+                    key=lambda x: float(x.get("score", 0.0) or 0.0),
+                    reverse=True,
+                )
                 group_view = [
                     {
                         "pathogen_panel": x["pathogen_panel"],
@@ -246,7 +260,12 @@ def main() -> None:
                 st.table(group_view)
 
             if row["top5"]:
-                top_view = [{"label": item["label"], "score": pct(item["score"])} for item in row["top5"]]
+                top_items = sorted(
+                    row["top5"],
+                    key=lambda x: float(x.get("score", 0.0) or 0.0),
+                    reverse=True,
+                )
+                top_view = [{"label": item["label"], "score": pct(item["score"])} for item in top_items]
                 st.table(top_view)
 
 
