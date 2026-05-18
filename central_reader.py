@@ -27,9 +27,9 @@ TARGET_TO_KINGDOM = {
 KINGDOM_TO_TARGET = {v: k for k, v in TARGET_TO_KINGDOM.items()}
 DEFAULT_KINGDOM_ROUTER_MODEL = Path("runs/saved_models/kingdom_router_kmer_lr.joblib")
 TARGET_ROOTS = {
-    "bacteria": Path("DNA/Bacteria"),
-    "fungi": Path("DNA/Fungi"),
-    "rna": Path("RNA/Viruses"),
+    "bacteria": Path("Database/bacteria_genus"),
+    "fungi": Path("Database/fungi_genus"),
+    "rna": Path("Database/rna_genus"),
 }
 _TARGET_GENUS_VOCAB: dict[str, set[str]] | None = None
 _ROUTER_MODELS_CACHE: dict[

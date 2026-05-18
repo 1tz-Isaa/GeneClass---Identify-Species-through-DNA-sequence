@@ -35,7 +35,7 @@ def list_models() -> list[Path]:
 
 
 def pick_random_dataset_fasta() -> Path | None:
-    roots = [Path("DNA"), Path("RNA")]
+    roots = [Path("Database")]
     files: list[Path] = []
     for root in roots:
         if root.exists():
@@ -46,15 +46,12 @@ def pick_random_dataset_fasta() -> Path | None:
 
 
 def fasta_ground_truth(file_path: Path) -> str:
-    # Expected structure: Domain/Kingdom/Genus/Species/file.fasta
+    # Expected structure: Database/<target>_genus/Genus/Species/file.fasta
     parts = file_path.parts
     try:
-        idx = parts.index("DNA")
+        idx = parts.index("Database")
     except ValueError:
-        try:
-            idx = parts.index("RNA")
-        except ValueError:
-            return "unknown"
+        return "unknown"
 
     tail = parts[idx:]
     if len(tail) >= 4:
@@ -123,7 +120,7 @@ def main() -> None:
         if st.button("Pick random FASTA from dataset"):
             chosen = pick_random_dataset_fasta()
             if chosen is None:
-                st.warning("No FASTA file found under DNA/ or RNA/")
+                st.warning("No FASTA file found under Database/")
             else:
                 text = chosen.read_text(encoding="utf-8", errors="ignore")
                 records = parse_fasta_text(text)

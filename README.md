@@ -17,11 +17,10 @@ The project is designed for research and educational use. It is not a medical di
 
 ```text
 Geneclass25/
-  DNA/
-    Bacteria/
-    Fungi/
-  RNA/
-    Viruses/
+  Database/
+    bacteria_genus/
+    fungi_genus/
+    rna_genus/
   runs/
     saved_models/
     training_logs/
@@ -58,9 +57,9 @@ python3 -m pip install certifi
 The dataset is pulled from NCBI Nucleotide using Biopython Entrez. The import script searches for pathogen sequences and stores them as FASTA files under:
 
 ```text
-DNA/Bacteria/<Genus>/<Species>/
-DNA/Fungi/<Genus>/<Species>/
-RNA/Viruses/<Genus>/<Species>/
+Database/bacteria_genus/<Genus>/<Species>/
+Database/fungi_genus/<Genus>/<Species>/
+Database/rna_genus/<Genus>/<Species>/
 ```
 
 Run the importer:
@@ -252,4 +251,3 @@ TRAIN_TARGET=rna TRAIN_PRESET=accuracy python3 Main_Train.py
 streamlit run Judge_App.py
 streamlit run Training_Dashboard.py
 ```
-

@@ -26,6 +26,8 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, classificat
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 
+from training.config import TARGET_CONFIG
+
 
 def clean_sequence(seq: str) -> str:
     return re.sub(r"[^A-Za-z]", "", seq).upper()
@@ -91,9 +93,10 @@ def main() -> None:
 
     rows = []
     per_root_counts = {}
-    for root in ("DNA", "RNA"):
+    for target, meta in TARGET_CONFIG.items():
+        root = meta["root"]
         before = len(rows)
-        log(f"[ROUTER] Loading dataset root={root} ...")
+        log(f"[ROUTER] Loading dataset target={target} root={root} ...")
         for item in load_dataset(root, show_progress=show_file_progress):
             seq = clean_sequence(item["sequence"])
             kingdom = item["kingdom"]

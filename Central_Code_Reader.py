@@ -1,7 +1,7 @@
 """CLI for central kingdom routing + genus prediction from FASTA.
 
 Examples:
-  python3 Central_Code_Reader.py --input DNA/Fungi/Candida/albicans/CA_sample2.fasta
+  python3 Central_Code_Reader.py --input Database/fungi_genus/Candida/albicans/CA_sample2.fasta
   python3 Central_Code_Reader.py --input my_wgs.fasta --source best --max-router-seqs 100
 """
 
