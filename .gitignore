@@ -4,9 +4,35 @@
 # Python
 __pycache__/
 *.py[cod]
+.venv/
 
 # Generated datasets and training artifacts
 runs/
-DNA/
-RNA/,,,lôpl
 
+# Local legacy dataset copies kept outside the organized DNA/RNA layout
+Acinetobacter/
+Bacteroides/
+Brucella/
+Burkholderia/
+Chlamydia/
+Citrobacter/
+Coxiella/
+Fusobacterium/
+Haemophilus/
+Klebsiella/
+Legionella/
+Moraxella/
+Morganella/
+Mycobacterium/
+Mycoplasma/
+Nocardia/
+Pasteurella/
+Prevotella/
+Proteus/
+Providencia/
+Pseudomonas/
+Rhodococcus/
+Serratia/
+Staphylococcus/
+Streptococcus/
+Yersinia/
