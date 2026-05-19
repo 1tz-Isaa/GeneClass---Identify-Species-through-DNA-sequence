@@ -311,20 +311,20 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
 
 DATASET_COLLECTIONS = [
     {
-        "label": "Database/bacteria_genus",
-        "root": Path("Database/bacteria_genus"),
+        "label": "DNA/Bacteria",
+        "root": Path("DNA/Bacteria"),
         "profile": "bacteria",
         "genus_to_species": BACTERIA_GENUS_TO_SPECIES,
     },
     {
-        "label": "Database/fungi_genus",
-        "root": Path("Database/fungi_genus"),
+        "label": "DNA/Fungi",
+        "root": Path("DNA/Fungi"),
         "profile": "fungi",
         "genus_to_species": FUNGI_GENUS_TO_SPECIES,
     },
     {
-        "label": "Database/rna_genus",
-        "root": Path("Database/rna_genus"),
+        "label": "RNA/Viruses",
+        "root": Path("RNA/Viruses"),
         "profile": "rna",
         "genus_to_species": RNA_GENUS_TO_SPECIES,
     },

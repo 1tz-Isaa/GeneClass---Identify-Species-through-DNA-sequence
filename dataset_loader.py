@@ -2,13 +2,6 @@ import os
 from collections.abc import Iterator
 
 
-GROUPED_TARGET_KINGDOMS = {
-    "bacteria_genus": "Bacteria",
-    "fungi_genus": "Fungi",
-    "rna_genus": "Viruses",
-}
-
-
 def read_fasta(path):
     sequences = []
     header = None
@@ -31,13 +24,6 @@ def read_fasta(path):
 def infer_labels(root_folder, dirpath, filename):
     root_name = os.path.basename(os.path.normpath(root_folder))
     rel_parts = os.path.relpath(dirpath, root_folder).split(os.sep)
-
-    if root_name in GROUPED_TARGET_KINGDOMS:
-        domain = root_name
-        kingdom = GROUPED_TARGET_KINGDOMS[root_name]
-        genus = rel_parts[0] if len(rel_parts) >= 1 else "unknown"
-        species = rel_parts[1] if len(rel_parts) >= 2 else os.path.splitext(filename)[0]
-        return domain, kingdom, genus, species
 
     domain = root_name
     kingdom = rel_parts[0] if len(rel_parts) >= 1 else "unknown"

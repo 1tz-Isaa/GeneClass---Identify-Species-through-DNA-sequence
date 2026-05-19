@@ -4,9 +4,9 @@ import os
 
 
 TARGET_CONFIG = {
-    "bacteria": {"root": "Database/bacteria_genus", "kingdom": "Bacteria"},
-    "fungi": {"root": "Database/fungi_genus", "kingdom": "Fungi"},
-    "rna": {"root": "Database/rna_genus", "kingdom": "Viruses"},
+    "bacteria": {"root": "DNA", "kingdom": "Bacteria"},
+    "fungi": {"root": "DNA", "kingdom": "Fungi"},
+    "rna": {"root": "RNA", "kingdom": "Viruses"},
 }
 
 TARGET_ALIASES = {
@@ -190,9 +190,9 @@ def format_target_table() -> str:
             "Target Table",
             "key | target   | data folder",
             "----+----------+------------",
-            "1   | bacteria | Database/bacteria_genus",
-            "2   | fungi    | Database/fungi_genus",
-            "3   | rna      | Database/rna_genus",
+            "1   | bacteria | DNA/Bacteria",
+            "2   | fungi    | DNA/Fungi",
+            "3   | rna      | RNA/Viruses",
         ]
     )
 
