@@ -26,10 +26,54 @@ TARGET_TO_KINGDOM = {
 }
 KINGDOM_TO_TARGET = {v: k for k, v in TARGET_TO_KINGDOM.items()}
 DEFAULT_KINGDOM_ROUTER_MODEL = Path("runs/saved_models/kingdom_router_kmer_lr.joblib")
+DEFAULT_MODEL_DIR = Path("runs/saved_models")
+BAD_HEADER_PATTERNS = (
+    "patent",
+    " jp ",
+    " kr ",
+    "synthetic construct",
+    "cloning vector",
+    "vector",
+    "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna",
+)
+DEFAULT_REJECT_MARGIN = 0.12
+VIRUS_GENUS_TO_FAMILY = {
+    "Alphacoronavirus": "Coronaviridae",
+    "Betacoronavirus": "Coronaviridae",
+    "Enterovirus": "Picornaviridae",
+    "Rhinovirus": "Picornaviridae",
+    "Influenzavirus": "Orthomyxoviridae",
+    "Hantavirus": "Hantaviridae",
+    "Orthobunyavirus": "Peribunyaviridae",
+    "Reovirus": "Reoviridae",
+    "Arenavirus": "Arenaviridae",
+    "Metapneumovirus": "Pneumoviridae",
+    "Orthopneumovirus": "Pneumoviridae",
+    "Respirovirus": "Paramyxoviridae",
+}
+
+
+def _first_existing_root(*candidates: Path) -> Path:
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 TARGET_ROOTS = {
-    "bacteria": Path("DNA/Bacteria"),
-    "fungi": Path("DNA/Fungi"),
-    "rna": Path("RNA/Viruses"),
+    "bacteria": _first_existing_root(Path("Database/bacteria_genus"), Path("DNA/Bacteria")),
+    "fungi": _first_existing_root(Path("Database/fungi_genus"), Path("DNA/Fungi")),
+    "rna": _first_existing_root(Path("Database/rna_genus"), Path("RNA/Viruses")),
 }
 _TARGET_GENUS_VOCAB: dict[str, set[str]] | None = None
 _ROUTER_MODELS_CACHE: dict[
@@ -40,6 +84,7 @@ _KINGDOM_ROUTER_CACHE: dict[str, object] = {
     "mtime_ns": -1,
     "model": None,
 }
+_VIRUS_FAMILY_MODEL_CACHE: dict[tuple[str, str], tuple[Path, int, object]] = {}
 
 
 @dataclass(frozen=True)
@@ -88,7 +133,8 @@ def _header_hint_scores(router_records: list[tuple[str, str]]) -> dict[str, floa
 
 
 def clean_sequence(seq: str) -> str:
-    return re.sub(r"[^A-Za-z]", "", seq).upper()
+    # Keep nucleotide symbols used by the training pipeline. N means ambiguous/unknown base.
+    return re.sub(r"[^ACGTUNacgtun]", "", seq).upper()
 
 
 def parse_fasta_text(text: str) -> list[tuple[str, str]]:
@@ -132,29 +178,41 @@ def parse_fasta_file(path: Path) -> list[tuple[str, str]]:
 
 
 def _model_candidates(target: str, source: str) -> list[str]:
+    app_model = f"{source}_{target}_genus_kmer_lr_app.joblib"
+    app_fallback = f"{'best' if source == 'latest' else 'latest'}_{target}_genus_kmer_lr_app.joblib"
     if source == "latest":
         first = [
+            app_model,
             f"latest_{target}_genus_kmer_lr_group_species_dedup1.joblib",
             f"latest_{target}_genus_kmer_lr.joblib",
         ]
         fallback = [
+            app_fallback,
             f"best_{target}_genus_kmer_lr_group_species_dedup1.joblib",
             f"best_{target}_genus_kmer_lr.joblib",
         ]
         return first + fallback
 
     first = [
+        app_model,
         f"best_{target}_genus_kmer_lr_group_species_dedup1.joblib",
         f"best_{target}_genus_kmer_lr.joblib",
     ]
     fallback = [
+        app_fallback,
         f"latest_{target}_genus_kmer_lr_group_species_dedup1.joblib",
         f"latest_{target}_genus_kmer_lr.joblib",
     ]
     return first + fallback
 
 
-def load_router_models(model_dir: Path = Path("runs/saved_models"), source: str = "best") -> dict[str, LoadedTargetModel]:
+def _family_model_candidates(target: str, source: str) -> list[str]:
+    app_model = f"{source}_{target}_family_kmer_lr_app.joblib"
+    app_fallback = f"{'best' if source == 'latest' else 'latest'}_{target}_family_kmer_lr_app.joblib"
+    return [app_model, app_fallback]
+
+
+def load_router_models(model_dir: Path = DEFAULT_MODEL_DIR, source: str = "best") -> dict[str, LoadedTargetModel]:
     if source not in {"best", "latest"}:
         raise ValueError("source must be 'best' or 'latest'")
 
@@ -193,6 +251,32 @@ def load_router_models(model_dir: Path = Path("runs/saved_models"), source: str 
 
     _ROUTER_MODELS_CACHE[cache_key] = (loaded, mtimes)
     return loaded
+
+
+def load_virus_family_model(model_dir: Path = DEFAULT_MODEL_DIR, source: str = "best"):
+    if source not in {"best", "latest"}:
+        raise ValueError("source must be 'best' or 'latest'")
+
+    cache_key = (str(model_dir.resolve()), source)
+    cached = _VIRUS_FAMILY_MODEL_CACHE.get(cache_key)
+    if cached is not None:
+        cached_path, cached_mtime, cached_model = cached
+        if cached_path.exists() and int(cached_path.stat().st_mtime_ns) == cached_mtime:
+            return cached_model, cached_path
+
+    chosen = None
+    for name in _family_model_candidates("rna", source):
+        p = model_dir / name
+        if p.exists():
+            chosen = p
+            break
+
+    if chosen is None:
+        return None, None
+
+    model = load(chosen)
+    _VIRUS_FAMILY_MODEL_CACHE[cache_key] = (chosen, int(chosen.stat().st_mtime_ns), model)
+    return model, chosen
 
 
 def load_kingdom_router_model(path: Path = DEFAULT_KINGDOM_ROUTER_MODEL):
@@ -508,6 +592,7 @@ def predict_with_model(
     min_len: int = 120,
     max_windows_per_record: int = 40,
     reject_threshold: float = 0.0,
+    reject_margin: float = DEFAULT_REJECT_MARGIN,
 ) -> list[dict]:
     has_proba = hasattr(model, "predict_proba")
     classes = list(model.classes_) if hasattr(model, "classes_") else []
@@ -530,6 +615,7 @@ def predict_with_model(
             "n_windows": len(windows),
             "prediction": None,
             "confidence": None,
+            "margin": None,
             "top": [],
         }
 
@@ -541,8 +627,10 @@ def predict_with_model(
             top_idx = np.argsort(avg)[::-1][:top_k]
             top_label = classes[top_idx[0]]
             top_conf = float(avg[top_idx[0]])
+            second_conf = float(avg[top_idx[1]]) if len(top_idx) > 1 else 0.0
             row["prediction"] = top_label
             row["confidence"] = top_conf
+            row["margin"] = float(top_conf - second_conf)
             row["raw_prediction"] = top_label
             row["top"] = [{"label": classes[j], "score": float(avg[j])} for j in top_idx]
         else:
@@ -550,10 +638,23 @@ def predict_with_model(
             major, cnt = Counter(preds).most_common(1)[0]
             row["prediction"] = major
             row["confidence"] = float(cnt / len(preds))
+            row["margin"] = 0.0
             row["raw_prediction"] = major
 
-        if row["confidence"] is not None and row["confidence"] < reject_threshold:
+        noisy_header = any(token in f" {(header or '').lower()} " for token in BAD_HEADER_PATTERNS)
+        low_confidence = (
+            row["confidence"] is not None
+            and row["confidence"] < reject_threshold
+            and float(row.get("margin") or 0.0) < reject_margin
+        )
+        if noisy_header:
+            row["status"] = "uncertain_unsupported_header"
             row["prediction"] = "UNCERTAIN"
+        elif low_confidence:
+            row["status"] = "uncertain_low_confidence"
+            row["prediction"] = "UNCERTAIN"
+        else:
+            row["status"] = "predicted"
 
         out.append(row)
 
@@ -569,6 +670,7 @@ def _estimate_target_fit(
     stride: int,
     min_len: int,
     max_windows_per_record: int,
+    reject_margin: float = DEFAULT_REJECT_MARGIN,
 ) -> dict:
     sample = sorted(records, key=lambda x: len(x[1]), reverse=True)[:max_records]
     if not sample:
@@ -583,6 +685,7 @@ def _estimate_target_fit(
         min_len=min_len,
         max_windows_per_record=max_windows_per_record,
         reject_threshold=0.0,
+        reject_margin=reject_margin,
     )
     if not preds:
         return {"score": 0.0, "n_records": 0}
@@ -591,6 +694,36 @@ def _estimate_target_fit(
     weights = np.sqrt(np.array([max(1, int(p.get("length", 1))) for p in preds], dtype=float))
     score = float(np.average(confs, weights=weights)) if len(confs) else 0.0
     return {"score": score, "n_records": len(preds)}
+
+
+def _apply_virus_family_first(
+    predictions: list[dict],
+    family_predictions: list[dict],
+    *,
+    genus_report_threshold: float,
+    genus_report_margin: float,
+) -> list[dict]:
+    for row, family_row in zip(predictions, family_predictions):
+        family_label = family_row.get("raw_prediction") or family_row.get("prediction")
+        row["family_prediction"] = family_label
+        row["family_confidence"] = family_row.get("confidence")
+        row["family_margin"] = family_row.get("margin")
+        row["family_status"] = family_row.get("status")
+        row["family_top"] = family_row.get("top", [])
+
+        genus_conf = float(row.get("confidence") or 0.0)
+        genus_margin = float(row.get("margin") or 0.0)
+        genus_is_strong = (
+            row.get("status") == "predicted"
+            and (genus_conf >= genus_report_threshold or genus_margin >= genus_report_margin)
+        )
+
+        row["report_level"] = "genus" if genus_is_strong else "family"
+        if not genus_is_strong and row.get("status") == "predicted":
+            row["status"] = "family_predicted_genus_uncertain"
+            row["prediction"] = "UNCERTAIN"
+
+    return predictions
 
 
 def run_central_reader(
@@ -605,6 +738,7 @@ def run_central_reader(
     predict_stride: int = 750,
     max_predict_windows_per_record: int = 40,
     reject_threshold: float = 0.0,
+    reject_margin: float = DEFAULT_REJECT_MARGIN,
     force_target: str | None = None,
     router_weight: float = 0.65,
     evidence_weight: float = 0.35,
@@ -613,6 +747,9 @@ def run_central_reader(
     fit_fallback_gap: float = 0.06,
     fit_fallback_min_virus_score: float = 0.50,
     fit_fallback_max_records: int = 20,
+    virus_family_first: bool = True,
+    virus_genus_report_threshold: float = 0.45,
+    virus_genus_report_margin: float = 0.18,
 ) -> dict:
     if not records:
         raise ValueError("No valid sequence records")
@@ -670,6 +807,7 @@ def run_central_reader(
                 stride=predict_stride,
                 min_len=min_len,
                 max_windows_per_record=max_predict_windows_per_record,
+                reject_margin=reject_margin,
             )
 
         virus_score = float(fit_scores.get("rna", {}).get("score", 0.0))
@@ -686,6 +824,9 @@ def run_central_reader(
                 routed["routing_method"] = f"{routed.get('routing_method', 'auto')}+fit_fallback"
 
     selected_model = models[selected_target].model
+    selected_model_classes = [
+        str(cls) for cls in getattr(selected_model, "classes_", [])
+    ]
     predictions = predict_with_model(
         selected_model,
         predict_records,
@@ -695,7 +836,33 @@ def run_central_reader(
         min_len=min_len,
         max_windows_per_record=max_predict_windows_per_record,
         reject_threshold=reject_threshold,
+        reject_margin=reject_margin,
     )
+
+    family_model_path = None
+    family_model_classes: list[str] = []
+    if selected_target == "rna" and virus_family_first:
+        family_model, family_path = load_virus_family_model(source=model_source)
+        if family_model is not None:
+            family_model_path = str(family_path)
+            family_model_classes = [str(cls) for cls in getattr(family_model, "classes_", [])]
+            family_predictions = predict_with_model(
+                family_model,
+                predict_records,
+                top_k=5,
+                window_size=predict_window,
+                stride=predict_stride,
+                min_len=min_len,
+                max_windows_per_record=max_predict_windows_per_record,
+                reject_threshold=max(0.20, reject_threshold - 0.10),
+                reject_margin=max(0.08, reject_margin - 0.04),
+            )
+            predictions = _apply_virus_family_first(
+                predictions,
+                family_predictions,
+                genus_report_threshold=virus_genus_report_threshold,
+                genus_report_margin=virus_genus_report_margin,
+            )
 
     return {
         **routed,
@@ -703,6 +870,14 @@ def run_central_reader(
         "input_sequences": len(records),
         "predicted_sequences": len(predictions),
         "reject_threshold": reject_threshold,
+        "selected_model_classes": selected_model_classes,
+        "selected_model_class_count": len(selected_model_classes),
+        "selected_family_model_path": family_model_path,
+        "selected_family_model_classes": family_model_classes,
+        "selected_family_model_class_count": len(family_model_classes),
+        "virus_family_first": bool(selected_target == "rna" and virus_family_first),
+        "virus_genus_report_threshold": virus_genus_report_threshold,
+        "virus_genus_report_margin": virus_genus_report_margin,
         "fit_scores": fit_scores,
         "predictions": predictions,
     }

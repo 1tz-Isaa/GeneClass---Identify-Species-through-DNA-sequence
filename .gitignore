@@ -9,7 +9,12 @@ __pycache__/
 # Generated datasets and training artifacts
 runs/
 
-# Local legacy dataset copies kept outside the organized DNA/RNA layout
+# Local legacy dataset copies. Canonical training data lives under Database/.
+DNA/
+RNA/
+legacy_dataset_backup/
+
+# Legacy root-level bacteria genus copies kept out of GitHub.
 Acinetobacter/
 Bacteroides/
 Brucella/

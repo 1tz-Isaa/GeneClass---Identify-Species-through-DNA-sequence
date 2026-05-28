@@ -49,6 +49,9 @@ ESEARCH_BACKOFF_SEC = float(os.getenv("ESEARCH_BACKOFF_SEC", "1.5"))
 EFETCH_RETRIES = int(os.getenv("EFETCH_RETRIES", "4"))
 EFETCH_BACKOFF_SEC = float(os.getenv("EFETCH_BACKOFF_SEC", "2.0"))
 EFETCH_BATCH_SIZE = max(1, int(os.getenv("EFETCH_BATCH_SIZE", "20")))
+DEDUP_EXACT_SEQUENCE_ON_IMPORT = os.getenv("DEDUP_EXACT_SEQUENCE_ON_IMPORT", "1") == "1"
+MAX_AMBIGUOUS_FRACTION = float(os.getenv("MAX_AMBIGUOUS_FRACTION", "0.20"))
+MIN_UNIQUE_BASES = max(1, int(os.getenv("MIN_UNIQUE_BASES", "4")))
 DATASET_TARGETS = {
     x.strip().lower()
     for x in os.getenv("DATASET_TARGETS", "rna, bacteria, fungi").split(",")
@@ -119,16 +122,17 @@ PROFILE_RNA = {
     "title_term": (
         '("complete genome"[Title])'
         if RNA_REQUIRE_COMPLETE_GENOME
-        else '(("complete genome"[Title]) OR (segment[Title]) OR (RNA[Title]))'
+        else '(("complete genome"[Title]) OR ("complete sequence"[Title]) OR (segment[Title]))'
     ),
     "relaxed_term": (
         '("complete genome"[All Fields])'
         if RNA_REQUIRE_COMPLETE_GENOME
-        else '(("complete genome"[All Fields]) OR (segment[All Fields]) OR (RNA[All Fields]))'
+        else '(("complete genome"[All Fields]) OR ("complete sequence"[All Fields]) OR (segment[All Fields]))'
     ),
     "exclude_block": (
         '(patent[Title] OR vector[Title] OR "synthetic construct"[Organism] OR "partial sequence"[Title] '
-        'OR "partial cds"[Title] OR "complete cds"[Title])'
+        'OR "partial genome"[Title] OR "partial cds"[Title] '
+        'OR "RNA construct"[Title] OR composition[Title] OR oligonucleotide[Title])'
     ),
     "include_terms": [],
     "bad_terms": [
@@ -136,8 +140,15 @@ PROFILE_RNA = {
         "plasmid",
         "synthetic construct",
         "partial sequence",
+        "partial genome",
         "partial cds",
-        "complete cds",
+        "unverified",
+        "rna construct",
+        "composition",
+        "oligonucleotide",
+        "extracellular vesicle",
+        "vaccine against",
+        "circular rna",
     ],
     "use_aliases": True,
     "organism_fallback_all_fields": True,
@@ -165,6 +176,75 @@ RNA_ORGANISM_ALIASES: Dict[str, List[str]] = {
     "human respirovirus 1": ["Human respirovirus 1", "Human parainfluenza virus 1", "HPIV-1"],
     "human respirovirus 3": ["Human respirovirus 3", "Human parainfluenza virus 3", "HPIV-3"],
     "human metapneumovirus": ["Human metapneumovirus", "hMPV"],
+    "avian metapneumovirus": [
+        "Avian metapneumovirus",
+        "Avian pneumovirus",
+        "Turkey rhinotracheitis virus",
+        "Avian rhinotracheitis virus",
+    ],
+    "avian metapneumovirus a": [
+        "Avian metapneumovirus A",
+        "Avian metapneumovirus subtype A",
+        "Avian pneumovirus A",
+        "Avian pneumovirus subtype A",
+        "Turkey rhinotracheitis virus",
+    ],
+    "avian metapneumovirus b": [
+        "Avian metapneumovirus B",
+        "Avian metapneumovirus subtype B",
+        "Avian pneumovirus B",
+        "Avian pneumovirus subtype B",
+        "Avian rhinotracheitis virus",
+    ],
+    "avian metapneumovirus c": [
+        "Avian metapneumovirus C",
+        "Avian metapneumovirus subtype C",
+        "Avian pneumovirus C",
+        "Avian pneumovirus subtype C",
+    ],
+    "avian metapneumovirus d": [
+        "Avian metapneumovirus D",
+        "Avian metapneumovirus subtype D",
+        "Avian pneumovirus D",
+        "Avian pneumovirus subtype D",
+    ],
+    "bovine orthopneumovirus": [
+        "Bovine orthopneumovirus",
+        "Bovine respiratory syncytial virus",
+        "BRSV",
+    ],
+    "murine orthopneumovirus": [
+        "Murine orthopneumovirus",
+        "Pneumonia virus of mice",
+        "PVM",
+    ],
+    "ovine orthopneumovirus": [
+        "Ovine orthopneumovirus",
+        "Ovine respiratory syncytial virus",
+    ],
+    "caprine orthopneumovirus": [
+        "Caprine orthopneumovirus",
+        "Caprine respiratory syncytial virus",
+    ],
+    "coxsackievirus a21": [
+        "Coxsackievirus A21",
+        "Coxsackie A virus A21",
+        "Enterovirus C104",
+    ],
+    "bunyamwera virus": ["Bunyamwera virus", "Bunyamwera orthobunyavirus"],
+    "california encephalitis virus": [
+        "California encephalitis virus",
+        "California encephalitis orthobunyavirus",
+    ],
+    "jamestown canyon virus": [
+        "Jamestown Canyon virus",
+        "Jamestown Canyon orthobunyavirus",
+    ],
+}
+
+RNA_HEADER_EXCLUDE_BY_SPECIES: Dict[str, List[str]] = {
+    # NCBI taxonomy/search often returns SARS-CoV-2 for older SARS-CoV queries.
+    "sars-cov": ["sars-cov-2", "sars cov 2", "coronavirus 2", "sars coronavirus 2"],
 }
 
 # -------------------------
@@ -240,6 +320,7 @@ FUNGI_GENUS_TO_SPECIES: Dict[str, List[str]] = {
 RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
     "Influenzavirus": [
         "Influenza A virus",
+        "Influenza A virus H3N2",
         "Influenza B virus",
         "Influenza C virus",
         "Influenza D virus",
@@ -250,6 +331,13 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
         "MERS-CoV",
         "Human coronavirus OC43",
         "Human coronavirus HKU1",
+        "Bovine coronavirus",
+        "Murine coronavirus",
+        "Rabbit coronavirus HKU14",
+        "Rousettus bat coronavirus HKU9",
+        "Pipistrellus bat coronavirus HKU5",
+        "Tylonycteris bat coronavirus HKU4",
+        "Hedgehog coronavirus 1",
     ],
     "Alphacoronavirus": [
         "Human coronavirus 229E",
@@ -274,6 +362,7 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
     ],
     "Metapneumovirus": [
         "Human metapneumovirus",
+        "Avian metapneumovirus",
         "Avian metapneumovirus A",
         "Avian metapneumovirus B",
         "Avian metapneumovirus C",
@@ -291,7 +380,17 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
         "Human rhinovirus B",
         "Human rhinovirus C",
     ],
-    "Arenavirus": ["Lassa virus", "Junin virus", "Machupo virus", "Guanarito virus", "Sabia virus"],
+    "Arenavirus": [
+        "Lassa virus",
+        "Junin virus",
+        "Machupo virus",
+        "Guanarito virus",
+        "Sabia virus",
+        "Lymphocytic choriomeningitis virus",
+        "Mopeia virus",
+        "Tacaribe virus",
+        "Whitewater Arroyo virus",
+    ],
     "Hantavirus": ["Hantaan virus", "Sin Nombre virus", "Andes virus", "Puumala virus", "Seoul virus"],
     "Orthobunyavirus": [
         "La Crosse virus",
@@ -306,25 +405,31 @@ RNA_GENUS_TO_SPECIES: Dict[str, List[str]] = {
         "Nelson Bay orthoreovirus",
         "Baboon orthoreovirus",
         "Reptilian orthoreovirus",
+        "Pteropine orthoreovirus",
+        "Melaka orthoreovirus",
+        "Broome orthoreovirus",
+        "Pulau reovirus",
+        "Cangyuan orthoreovirus",
+        "Neoavian orthoreovirus",
     ],
 }
 
 DATASET_COLLECTIONS = [
     {
-        "label": "DNA/Bacteria",
-        "root": Path("DNA/Bacteria"),
+        "label": "Database/Bacteria",
+        "root": Path("Database/bacteria_genus"),
         "profile": "bacteria",
         "genus_to_species": BACTERIA_GENUS_TO_SPECIES,
     },
     {
-        "label": "DNA/Fungi",
-        "root": Path("DNA/Fungi"),
+        "label": "Database/Fungi",
+        "root": Path("Database/fungi_genus"),
         "profile": "fungi",
         "genus_to_species": FUNGI_GENUS_TO_SPECIES,
     },
     {
-        "label": "RNA/Viruses",
-        "root": Path("RNA/Viruses"),
+        "label": "Database/Viruses",
+        "root": Path("Database/rna_genus"),
         "profile": "rna",
         "genus_to_species": RNA_GENUS_TO_SPECIES,
     },
@@ -376,6 +481,31 @@ def batched(items: List[str], size: int) -> List[List[str]]:
 
 def normalize_token(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
+def clean_sequence_text(seq: object) -> str:
+    return re.sub(r"[^ACGTUNacgtun]", "", str(seq)).upper()
+
+
+def sequence_hash_key(seq: object) -> str:
+    # T and U are treated as equivalent for exact duplicate detection.
+    return clean_sequence_text(seq).replace("U", "T")
+
+
+def sequence_quality_ok(seq: object, min_len: int, max_len: int) -> bool:
+    clean = clean_sequence_text(seq)
+    if len(clean) < min_len or len(clean) > max_len:
+        return False
+    canonical = clean.replace("U", "T")
+    if not canonical:
+        return False
+    ambiguous_fraction = canonical.count("N") / len(canonical)
+    if ambiguous_fraction > MAX_AMBIGUOUS_FRACTION:
+        return False
+    unique_bases = {base for base in canonical if base in {"A", "C", "G", "T"}}
+    if len(unique_bases) < MIN_UNIQUE_BASES:
+        return False
+    return True
 
 
 def safe_path_name(name: str) -> str:
@@ -511,6 +641,43 @@ def is_non_target(header: str, profile: Dict[str, object]) -> bool:
         return True
 
     return False
+
+
+def is_bad_import_header(header: str) -> bool:
+    bad_terms = (
+        "patent",
+        " jp ",
+        " kr ",
+        "synthetic construct",
+        "cloning vector",
+        "expression vector",
+        "plasmid",
+        "artificial sequence",
+        "environmental sample",
+        "uncultured",
+        "unverified",
+        "partial genome",
+        "partial sequence",
+        "partial cds",
+        "rna construct",
+        "composition",
+        "oligonucleotide",
+        "extracellular vesicle",
+        "vaccine against",
+        "circular rna",
+    )
+    h = f" {header.lower()} "
+    return any(term in h for term in bad_terms)
+
+
+def violates_species_header_exclusion(header: str, species: str) -> bool:
+    h = normalize_key(header)
+    species_key = normalize_key(species)
+    excluded_terms = []
+    for raw_key, terms in RNA_HEADER_EXCLUDE_BY_SPECIES.items():
+        if normalize_key(raw_key) == species_key:
+            excluded_terms.extend(terms)
+    return any(normalize_key(term) in h for term in excluded_terms)
 
 
 def search_ids(genus: str, species: str, profile: Dict[str, object], target_count: int) -> List[str]:
@@ -684,10 +851,12 @@ def choose_unique_strain_samples(
     target_count: int,
     pre_used_accessions: Optional[set] = None,
     pre_used_strains: Optional[set] = None,
+    pre_used_sequence_hashes: Optional[set] = None,
 ) -> List[Tuple[SeqRecord, str, str]]:
     selected: List[Tuple[SeqRecord, str, str]] = []
     used_strains = set(pre_used_strains or set())
     used_accessions = set(pre_used_accessions or set())
+    used_sequence_hashes = set(pre_used_sequence_hashes or set())
 
     min_len = int(profile["min_len"])
     max_len = int(profile["max_len"])
@@ -700,9 +869,12 @@ def choose_unique_strain_samples(
                 return
 
             header = rec.description
-            seq_len = len(rec.seq)
 
-            if seq_len < min_len or seq_len > max_len:
+            if is_bad_import_header(header):
+                continue
+            if violates_species_header_exclusion(header, species):
+                continue
+            if not sequence_quality_ok(rec.seq, min_len=min_len, max_len=max_len):
                 continue
             if require_species_phrase and organism_phrase not in header.lower():
                 continue
@@ -711,14 +883,18 @@ def choose_unique_strain_samples(
 
             accession = normalize_token(extract_accession(header))
             strain = extract_strain_key(header)
+            seq_key = sequence_hash_key(rec.seq)
 
             if accession in used_accessions:
                 continue
             if strain in used_strains:
                 continue
+            if DEDUP_EXACT_SEQUENCE_ON_IMPORT and seq_key in used_sequence_hashes:
+                continue
 
             used_accessions.add(accession)
             used_strains.add(strain)
+            used_sequence_hashes.add(seq_key)
             selected.append((rec, accession, strain))
 
     # Pass 1: strict
@@ -770,6 +946,7 @@ def existing_species_state(root: Path, genus: str, species: str) -> Dict[str, ob
             "valid_files": [],
             "accessions": set(),
             "strains": set(),
+            "sequence_hashes": set(),
             "next_index": 1,
         }
 
@@ -783,6 +960,7 @@ def existing_species_state(root: Path, genus: str, species: str) -> Dict[str, ob
     valid_files = []
     used_accessions = set()
     used_strains = set()
+    used_sequence_hashes = set()
     max_idx = 0
 
     for idx, p in sample_files:
@@ -795,6 +973,9 @@ def existing_species_state(root: Path, genus: str, species: str) -> Dict[str, ob
         strain = extract_strain_key(header)
         used_accessions.add(accession)
         used_strains.add(strain)
+        seq_key = sequence_hash_key(rec.seq)
+        if seq_key:
+            used_sequence_hashes.add(seq_key)
         valid_files.append(p)
 
     return {
@@ -802,8 +983,23 @@ def existing_species_state(root: Path, genus: str, species: str) -> Dict[str, ob
         "valid_files": valid_files,
         "accessions": used_accessions,
         "strains": used_strains,
+        "sequence_hashes": used_sequence_hashes,
         "next_index": max_idx + 1 if max_idx > 0 else 1,
     }
+
+
+def collect_existing_sequence_hashes(root: Path) -> set:
+    sequence_hashes = set()
+    if not root.exists():
+        return sequence_hashes
+    for path in root.rglob("*.fasta"):
+        rec = parse_local_fasta(path)
+        if rec is None:
+            continue
+        seq_key = sequence_hash_key(rec.seq)
+        if seq_key:
+            sequence_hashes.add(seq_key)
+    return sequence_hashes
 
 
 def write_species_samples(
@@ -973,7 +1169,16 @@ def run_collection(collection: Dict[str, object]) -> str:
     genus_to_species = collection["genus_to_species"]
 
     root.mkdir(parents=True, exist_ok=True)
-    report_lines = [f"Dataset: {label}"]
+    collection_sequence_hashes = set() if FORCE_REBUILD else collect_existing_sequence_hashes(root)
+    report_lines = [
+        f"Dataset: {label}",
+        (
+            "Import cleaning: "
+            f"dedup_exact_sequence={int(DEDUP_EXACT_SEQUENCE_ON_IMPORT)}, "
+            f"max_ambiguous_fraction={MAX_AMBIGUOUS_FRACTION}, "
+            f"min_unique_bases={MIN_UNIQUE_BASES}"
+        ),
+    ]
 
     for genus, species_list in genus_to_species.items():
         report_lines.append(f"Genus: {genus}")
@@ -1021,6 +1226,7 @@ def run_collection(collection: Dict[str, object]) -> str:
                 target_count=needed,
                 pre_used_accessions=set(existing["accessions"]) if append_mode else None,
                 pre_used_strains=set(existing["strains"]) if append_mode else None,
+                pre_used_sequence_hashes=collection_sequence_hashes,
             )
 
             write_species_samples(
@@ -1033,6 +1239,11 @@ def run_collection(collection: Dict[str, object]) -> str:
             )
 
             final_count = existing_count + len(selected) if append_mode else len(selected)
+            if DEDUP_EXACT_SEQUENCE_ON_IMPORT:
+                for rec, _, _ in selected:
+                    seq_key = sequence_hash_key(rec.seq)
+                    if seq_key:
+                        collection_sequence_hashes.add(seq_key)
 
             notes = []
             if append_mode and existing_count > 0:

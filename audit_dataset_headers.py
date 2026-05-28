@@ -15,15 +15,27 @@ from dataset_loader import load_dataset
 
 PATTERNS = {
     "patent": "patent",
+    "jp_publication": " jp ",
+    "kr_publication": " kr ",
     "synthetic_construct": "synthetic construct",
     "vector": "vector",
     "plasmid": "plasmid",
     "cloning_vector": "cloning vector",
+    "unverified": "unverified",
+    "partial_genome": "partial genome",
+    "partial_sequence": "partial sequence",
+    "partial_cds": "partial cds",
+    "rna_construct": "rna construct",
+    "composition": "composition",
+    "oligonucleotide": "oligonucleotide",
+    "extracellular_vesicle": "extracellular vesicle",
+    "vaccine_against": "vaccine against",
+    "circular_rna": "circular rna",
 }
 
 
 def detect_reasons(header: str) -> list[str]:
-    h = (header or "").lower()
+    h = f" {(header or '').lower()} "
     reasons = [name for name, token in PATTERNS.items() if token in h]
     return reasons
 

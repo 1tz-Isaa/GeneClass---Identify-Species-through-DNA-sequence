@@ -24,10 +24,22 @@ from training.config import TARGET_CONFIG, TrainConfig, format_target_table
 
 BAD_HEADER_PATTERNS = (
     "patent",
+    " jp ",
+    " kr ",
     "synthetic construct",
     "cloning vector",
     "vector",
     "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna",
 )
 
 RNA_GENUS_TO_FAMILY = {
@@ -96,7 +108,7 @@ def normalize_train_fragment(seq: str, fragment_len: int) -> str:
 
 
 def is_bad_header(header: str) -> bool:
-    h = (header or "").lower()
+    h = f" {(header or '').lower()} "
     return any(token in h for token in BAD_HEADER_PATTERNS)
 
 

@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--reject-threshold",
         type=float,
-        default=0.0,
+        default=0.35,
         help="If confidence < threshold, output UNCERTAIN",
     )
     p.add_argument(
@@ -79,6 +79,7 @@ def main() -> None:
     print(f"Routing method: {result.get('routing_method', 'unknown')}")
     print(f"Detected kingdom: {result['selected_kingdom']} (target={result['selected_target']})")
     print(f"Selected model: {result['selected_model_path']}")
+    print(f"Trained genera in selected model: {result.get('selected_model_class_count', 0)}")
     print("Routing scores:")
     for row in result["routing_scores"]:
         print(
@@ -94,11 +95,15 @@ def main() -> None:
     print("Predictions (top rows):")
     for idx, row in enumerate(result["predictions"][: args.top_show], start=1):
         conf = row["confidence"] if row["confidence"] is not None else float("nan")
+        margin = row.get("margin")
+        margin_text = f" margin={float(margin) * 100:.2f}%" if margin is not None else ""
         print(
             f"  {idx:02d}. len={row['length']:6d} windows={row.get('n_windows', 1):3d} "
-            f"pred={row['prediction']} conf={conf * 100:.2f}% "
+            f"pred={row['prediction']} conf={conf * 100:.2f}%{margin_text} "
             f"header={row['header']}"
         )
+        if row.get("prediction") == "UNCERTAIN" and row.get("raw_prediction"):
+            print(f"      closest trained genus={row['raw_prediction']} status={row.get('status')}")
 
     if args.json:
         print("\nJSON output:")
