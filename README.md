@@ -40,10 +40,20 @@ Geneclass25/
 
 ## Requirements
 
-Install the main Python libraries:
+Use Python 3.13 and install the web app dependencies:
 
 ```bash
-python3 -m pip install pandas numpy scikit-learn biopython joblib streamlit
+python3 -m pip install -r requirements.txt
+```
+
+The repository includes the five trained models and four model summaries used by
+the prediction app under `runs/saved_models/`. Other training outputs remain
+ignored. Keep `scikit-learn==1.8.0` when loading these models.
+
+For dataset importing, also install Biopython:
+
+```bash
+python3 -m pip install biopython
 ```
 
 Optional but recommended for NCBI SSL certificate handling:
@@ -169,6 +179,23 @@ Launch the training dashboard:
 ```bash
 streamlit run Training_Dashboard.py
 ```
+
+## Deploy The Prediction Web App
+
+The Python prediction app can be hosted on
+[Streamlit Community Cloud](https://share.streamlit.io/) using this GitHub
+repository. GitHub Pages serves static files and cannot run this Python server.
+
+1. Sign in to Streamlit Community Cloud with GitHub and choose **Create app**.
+2. Select this repository and the branch containing the deployment files.
+3. Set the main file path to `Judge_App.py`.
+4. In **Advanced settings**, select **Python 3.13** to match the tested runtime.
+5. Choose an available app URL and deploy.
+
+No API keys or secrets are required for prediction. Community Cloud installs
+`requirements.txt` and loads the included models; it does not train on startup.
+You can upload FASTA, paste a sequence, or use **Random Test**, then click
+**Predict**. The app is intended for research and educational demonstrations.
 
 ## How The Model Works
 

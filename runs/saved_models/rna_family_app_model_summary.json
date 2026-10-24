@@ -1,0 +1,47 @@
+{
+  "target": "rna",
+  "label_name": "family",
+  "model_paths": [
+    "runs/saved_models/best_rna_family_kmer_lr_app.joblib",
+    "runs/saved_models/latest_rna_family_kmer_lr_app.joblib"
+  ],
+  "source_sequences": 1311,
+  "training_examples": 8582,
+  "classes": 9,
+  "class_counts": {
+    "Arenaviridae": 125,
+    "Coronaviridae": 315,
+    "Hantaviridae": 100,
+    "Orthomyxoviridae": 108,
+    "Paramyxoviridae": 100,
+    "Peribunyaviridae": 90,
+    "Picornaviridae": 162,
+    "Pneumoviridae": 171,
+    "Reoviridae": 140
+  },
+  "kmer_range": [
+    6,
+    8
+  ],
+  "max_features": 30000,
+  "class_weight": "balanced",
+  "filtered_header_patterns": [
+    "patent",
+    " jp ",
+    " kr ",
+    "synthetic construct",
+    "cloning vector",
+    "vector",
+    "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna"
+  ]
+}

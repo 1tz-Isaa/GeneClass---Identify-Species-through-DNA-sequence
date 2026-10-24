@@ -1,0 +1,50 @@
+{
+  "target": "fungi",
+  "label_name": "genus",
+  "model_paths": [
+    "runs/saved_models/best_fungi_genus_kmer_lr_app.joblib",
+    "runs/saved_models/latest_fungi_genus_kmer_lr_app.joblib"
+  ],
+  "source_sequences": 29,
+  "training_examples": 38,
+  "classes": 10,
+  "class_counts": {
+    "Aspergillus": 1,
+    "Blastomyces": 5,
+    "Candida": 4,
+    "Coccidioides": 1,
+    "Cryptococcus": 4,
+    "Histoplasma": 1,
+    "Mucor": 2,
+    "Paracoccidioides": 5,
+    "Pneumocystis": 4,
+    "Talaromyces": 2
+  },
+  "kmer_range": [
+    5,
+    8
+  ],
+  "max_features": 25000,
+  "class_weight": "balanced",
+  "filtered_header_patterns": [
+    "patent",
+    " jp ",
+    " kr ",
+    "synthetic construct",
+    "cloning vector",
+    "vector",
+    "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna"
+  ],
+  "root": "Database/fungi_genus",
+  "genera": 10
+}

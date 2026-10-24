@@ -1,0 +1,49 @@
+{
+  "target": "bacteria",
+  "label_name": "genus",
+  "model_paths": [
+    "runs/saved_models/best_bacteria_genus_kmer_lr_app.joblib",
+    "runs/saved_models/latest_bacteria_genus_kmer_lr_app.joblib"
+  ],
+  "source_sequences": 58,
+  "training_examples": 76,
+  "classes": 9,
+  "class_counts": {
+    "Acinetobacter": 1,
+    "Bacteroides": 8,
+    "Brucella": 1,
+    "Chlamydia": 3,
+    "Francisella": 1,
+    "Fusobacterium": 4,
+    "Moraxella": 5,
+    "Streptococcus": 30,
+    "Yersinia": 5
+  },
+  "kmer_range": [
+    5,
+    8
+  ],
+  "max_features": 25000,
+  "class_weight": "balanced",
+  "filtered_header_patterns": [
+    "patent",
+    " jp ",
+    " kr ",
+    "synthetic construct",
+    "cloning vector",
+    "vector",
+    "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna"
+  ],
+  "root": "Database/bacteria_genus",
+  "genera": 9
+}

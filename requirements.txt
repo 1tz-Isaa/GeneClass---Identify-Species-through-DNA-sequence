@@ -1,0 +1,6 @@
+# Keep scikit-learn aligned with the bundled model files.
+scikit-learn==1.8.0
+numpy==2.3.2
+joblib==1.5.3
+pandas==2.3.3
+streamlit==1.54.0

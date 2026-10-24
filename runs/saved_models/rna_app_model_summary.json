@@ -1,0 +1,52 @@
+{
+  "target": "rna",
+  "label_name": "genus",
+  "model_paths": [
+    "runs/saved_models/best_rna_genus_kmer_lr_app.joblib",
+    "runs/saved_models/latest_rna_genus_kmer_lr_app.joblib"
+  ],
+  "source_sequences": 1311,
+  "training_examples": 8582,
+  "classes": 12,
+  "class_counts": {
+    "Alphacoronavirus": 100,
+    "Arenavirus": 125,
+    "Betacoronavirus": 215,
+    "Enterovirus": 100,
+    "Hantavirus": 100,
+    "Influenzavirus": 108,
+    "Metapneumovirus": 105,
+    "Orthobunyavirus": 90,
+    "Orthopneumovirus": 66,
+    "Reovirus": 140,
+    "Respirovirus": 100,
+    "Rhinovirus": 62
+  },
+  "kmer_range": [
+    5,
+    5
+  ],
+  "max_features": 25000,
+  "class_weight": "balanced",
+  "filtered_header_patterns": [
+    "patent",
+    " jp ",
+    " kr ",
+    "synthetic construct",
+    "cloning vector",
+    "vector",
+    "plasmid",
+    "unverified",
+    "partial genome",
+    "partial sequence",
+    "partial cds",
+    "rna construct",
+    "composition",
+    "oligonucleotide",
+    "extracellular vesicle",
+    "vaccine against",
+    "circular rna"
+  ],
+  "root": "Database/rna_genus",
+  "genera": 12
+}

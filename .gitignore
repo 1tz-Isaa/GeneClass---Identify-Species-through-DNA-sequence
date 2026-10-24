@@ -6,8 +6,19 @@ __pycache__/
 *.py[cod]
 .venv/
 
-# Generated datasets and training artifacts
-runs/
+# Generated training artifacts; keep only the models used by the web app.
+runs/*
+!runs/saved_models/
+runs/saved_models/*
+!runs/saved_models/best_bacteria_genus_kmer_lr_app.joblib
+!runs/saved_models/best_fungi_genus_kmer_lr_app.joblib
+!runs/saved_models/best_rna_genus_kmer_lr_app.joblib
+!runs/saved_models/best_rna_family_kmer_lr_app.joblib
+!runs/saved_models/kingdom_router_kmer_lr.joblib
+!runs/saved_models/bacteria_app_model_summary.json
+!runs/saved_models/fungi_app_model_summary.json
+!runs/saved_models/rna_app_model_summary.json
+!runs/saved_models/rna_family_app_model_summary.json
 
 # Local legacy dataset copies. Canonical training data lives under Database/.
 DNA/

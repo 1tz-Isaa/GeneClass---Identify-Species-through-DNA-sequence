@@ -255,15 +255,23 @@ def main() -> None:
     records: list[tuple[str, str]] = []
     source_note = ""
 
+    def clear_random_test() -> None:
+        st.session_state.pop("random_test_records", None)
+        st.session_state.pop("random_test_source_note", None)
+
     with tab_upload:
-        up = st.file_uploader("Upload .fasta/.fa/.txt", type=["fasta", "fa", "txt"])
+        up = st.file_uploader(
+            "Upload .fasta/.fa/.txt",
+            type=["fasta", "fa", "txt"],
+            on_change=clear_random_test,
+        )
         if up is not None:
             text = up.read().decode("utf-8", errors="ignore")
             records = parse_fasta_text(text)
             source_note = f"Uploaded file: {up.name}"
 
     with tab_paste:
-        pasted = st.text_area("Paste FASTA or raw sequence", height=180)
+        pasted = st.text_area("Paste FASTA or raw sequence", height=180, on_change=clear_random_test)
         if pasted.strip():
             records = parse_fasta_text(pasted)
             source_note = "Pasted input"
@@ -275,9 +283,16 @@ def main() -> None:
                 st.warning("No FASTA file found under Database/, DNA/, or RNA/")
             else:
                 text = chosen.read_text(encoding="utf-8", errors="ignore")
-                records = parse_fasta_text(text)
+                st.session_state["random_test_records"] = parse_fasta_text(text)
                 gt = fasta_ground_truth(chosen)
-                source_note = f"Random file: {chosen} | expected path label: {gt}"
+                st.session_state["random_test_source_note"] = (
+                    f"Random file: {chosen} | expected path label: {gt}"
+                )
+
+        if st.session_state.get("random_test_records"):
+            records = st.session_state["random_test_records"]
+            source_note = st.session_state["random_test_source_note"]
+            st.caption(source_note)
 
     if st.button("Predict", type="primary", use_container_width=True):
         if not records:
